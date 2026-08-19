@@ -5,6 +5,7 @@ import Link from "next/link";
 import { getTrial, streamTrial, SpeechEntry, VerdictEntry, Trial } from "@/lib/api";
 import SpeechCard, { SpeechCardState } from "@/components/SpeechCard";
 import VerdictCard, { VerdictCardState } from "@/components/VerdictCard";
+import UsageTable from "@/components/UsageTable";
 
 const LAWYER_ROLES = ["prosecutor_1", "prosecutor_2", "defender_1", "defender_2"];
 const JUDGE_ROLES = ["judge_1", "judge_2", "judge_3"];
@@ -18,7 +19,13 @@ function initialVerdicts(): VerdictCardState[] {
 }
 
 function fromSpeechEntry(entry: SpeechEntry): SpeechCardState {
-  return { role: entry.role, status: entry.status, content: entry.content };
+  return {
+    role: entry.role,
+    status: entry.status,
+    content: entry.content,
+    model: entry.model,
+    usage: entry.usage,
+  };
 }
 
 function fromVerdictEntry(entry: VerdictEntry): VerdictCardState {
@@ -27,6 +34,8 @@ function fromVerdictEntry(entry: VerdictEntry): VerdictCardState {
     status: entry.status,
     verdict: entry.verdict,
     reasoning: entry.reasoning,
+    model: entry.model,
+    usage: entry.usage,
   };
 }
 
@@ -69,7 +78,15 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
         onSpeech: (data) => {
           setSpeeches((prev) =>
             prev.map((s) =>
-              s.role === data.role ? { role: data.role, status: "ok", content: data.content } : s
+              s.role === data.role
+                ? {
+                    role: data.role,
+                    status: "ok",
+                    content: data.content,
+                    model: data.model,
+                    usage: data.usage,
+                  }
+                : s
             )
           );
         },
@@ -82,6 +99,8 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
                     status: "ok",
                     verdict: data.verdict as "guilty" | "not_guilty",
                     reasoning: data.reasoning,
+                    model: data.model,
+                    usage: data.usage,
                   }
                 : v
             )
@@ -153,7 +172,13 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
         ))}
       </div>
 
-      {done && <p className="muted">— Trial concluded —</p>}
+      {done && (
+        <>
+          <h2>Token Usage</h2>
+          <UsageTable rows={[...speeches, ...verdicts]} />
+          <p className="muted">— Trial concluded —</p>
+        </>
+      )}
     </main>
   );
 }

@@ -1,15 +1,21 @@
+import { Usage } from "@/lib/api";
+
 export type VerdictCardState = {
   role: string;
   status: "pending" | "ok" | "failed";
   verdict?: "guilty" | "not_guilty" | null;
   reasoning?: string | null;
+  model?: string | null;
+  usage?: Usage | null;
 };
 
-const ROLE_LABELS: Record<string, string> = {
+export const JUDGE_ROLE_LABELS: Record<string, string> = {
   judge_1: "Judge I",
   judge_2: "Judge II",
   judge_3: "Judge III",
 };
+
+const ROLE_LABELS = JUDGE_ROLE_LABELS;
 
 export default function VerdictCard({ role, status, verdict, reasoning }: VerdictCardState) {
   return (

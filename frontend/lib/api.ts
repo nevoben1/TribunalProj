@@ -90,11 +90,17 @@ export async function getTrial(id: string): Promise<Trial> {
 }
 
 type StreamHandlers = {
-  onSpeech: (data: { role: string; content: string; usage: Usage | null }) => void;
+  onSpeech: (data: {
+    role: string;
+    content: string;
+    model: string;
+    usage: Usage | null;
+  }) => void;
   onVerdict: (data: {
     role: string;
     verdict: string;
     reasoning: string;
+    model: string;
     usage: Usage | null;
   }) => void;
   onError: (data: { role: string; message: string }) => void;

@@ -1,15 +1,21 @@
+import { Usage } from "@/lib/api";
+
 export type SpeechCardState = {
   role: string;
   status: "pending" | "ok" | "failed";
   content?: string | null;
+  model?: string | null;
+  usage?: Usage | null;
 };
 
-const ROLE_LABELS: Record<string, string> = {
+export const LAWYER_ROLE_LABELS: Record<string, string> = {
   prosecutor_1: "Prosecutor I",
   prosecutor_2: "Prosecutor II",
   defender_1: "Defender I",
   defender_2: "Defender II",
 };
+
+const ROLE_LABELS = LAWYER_ROLE_LABELS;
 
 export default function SpeechCard({ role, status, content }: SpeechCardState) {
   return (
