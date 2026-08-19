@@ -18,6 +18,7 @@ def _speech_event(entry: SpeechEntry) -> dict:
             "type": "speech",
             "role": entry.role,
             "content": entry.content,
+            "model": entry.model,
             "usage": entry.usage.model_dump() if entry.usage else None,
         }
     return {"type": "error", "role": entry.role, "message": "speech generation failed"}
@@ -30,6 +31,7 @@ def _verdict_event(entry: VerdictEntry) -> dict:
             "role": entry.role,
             "verdict": entry.verdict,
             "reasoning": entry.reasoning,
+            "model": entry.model,
             "usage": entry.usage.model_dump() if entry.usage else None,
         }
     return {"type": "error", "role": entry.role, "message": "verdict generation failed"}
