@@ -15,6 +15,17 @@ def _parse_verdict(raw: str) -> tuple[str, str] | None:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
+
+    # Still structured JSON parsing, not regex-over-prose: some models wrap
+    # the object in a single-element list despite response_format json_object.
+    if isinstance(data, list):
+        if len(data) != 1 or not isinstance(data[0], dict):
+            return None
+        data = data[0]
+
+    if not isinstance(data, dict):
+        return None
+
     verdict = str(data.get("verdict", "")).strip().lower()
     reasoning = data.get("reasoning")
     if verdict not in _VALID_VERDICTS or not isinstance(reasoning, str):
@@ -74,6 +85,7 @@ async def run_judge_verdict(
                 usage=Usage(
                     prompt_tokens=result.prompt_tokens,
                     completion_tokens=result.completion_tokens,
+                    cost=result.cost,
                 ),
             )
         logger.warning(

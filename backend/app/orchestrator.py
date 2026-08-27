@@ -52,14 +52,20 @@ async def run_trial(
         yield _speech_event(entry)
 
     verdicts: list[VerdictEntry] = []
-    tasks = {
-        asyncio.create_task(
+    tasks = {}
+    for i, persona in enumerate(JUDGES):
+        if i > 0:
+            # Stagger judge calls: free-tier models often cap concurrent
+            # requests at 1, so firing all 3 judges at once (they can share
+            # SAME_MODEL in "same" mode) causes rate-limit failures on the
+            # later requests.
+            await asyncio.sleep(1.5)
+        task = asyncio.create_task(
             run_judge_verdict(
                 charge_sheet, speeches, persona, settings.model_for_role(persona.role, model_mode)
             )
-        ): persona
-        for persona in JUDGES
-    }
+        )
+        tasks[task] = persona
     pending = set(tasks.keys())
     while pending:
         done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)

@@ -11,8 +11,10 @@ logger = logging.getLogger("tribunal.lawyer")
 async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: str) -> SpeechEntry:
     user_prompt = (
         f"Charge sheet:\n{charge_sheet}\n\n"
-        "Deliver your speech in under 200 words. It must read as a complete, "
-        "concluded argument — do not leave your final sentence unfinished."
+        "Deliver your speech in 120-150 words — this is a hard limit, not a "
+        "suggestion. Plan your argument to fit that budget from the first sentence: "
+        "make your strongest points only, then conclude. You must finish with a "
+        "complete final sentence; never let your speech cut off mid-thought."
     )
     try:
         result = await call_openrouter(
@@ -30,6 +32,7 @@ async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: st
             usage=Usage(
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
+                cost=result.cost,
             ),
         )
     except AgentCallError as e:

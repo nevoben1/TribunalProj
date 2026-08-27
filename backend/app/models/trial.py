@@ -12,6 +12,7 @@ class ChargeSheetIn(BaseModel):
 class Usage(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cost: float | None = None
 
 
 class SpeechEntry(BaseModel):

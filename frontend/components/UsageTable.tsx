@@ -10,7 +10,16 @@ export type UsageRow = {
   usage?: Usage | null;
 };
 
+function formatCost(cost: number | null | undefined): string {
+  if (cost == null) return "—";
+  if (cost === 0) return "$0.00";
+  return `$${cost.toFixed(6)}`;
+}
+
 export default function UsageTable({ rows }: { rows: UsageRow[] }) {
+  const totalCost = rows.reduce((sum, row) => sum + (row.usage?.cost ?? 0), 0);
+  const hasAnyCost = rows.some((row) => row.usage?.cost != null);
+
   return (
     <div className="usage-table-wrap">
       <table className="usage-table">
@@ -21,6 +30,7 @@ export default function UsageTable({ rows }: { rows: UsageRow[] }) {
             <th>Prompt</th>
             <th>Completion</th>
             <th>Total</th>
+            <th>Price</th>
           </tr>
         </thead>
         <tbody>
@@ -34,10 +44,19 @@ export default function UsageTable({ rows }: { rows: UsageRow[] }) {
                 <td>{row.usage ? prompt : "—"}</td>
                 <td>{row.usage ? completion : "—"}</td>
                 <td>{row.usage ? prompt + completion : "—"}</td>
+                <td>{formatCost(row.usage?.cost)}</td>
               </tr>
             );
           })}
         </tbody>
+        {hasAnyCost && (
+          <tfoot>
+            <tr>
+              <td colSpan={5}>Total</td>
+              <td>{formatCost(totalCost)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

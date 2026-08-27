@@ -5,6 +5,7 @@ export type ModelMode = "same" | "distinct";
 export type Usage = {
   prompt_tokens: number;
   completion_tokens: number;
+  cost: number | null;
 };
 
 export type SpeechEntry = {

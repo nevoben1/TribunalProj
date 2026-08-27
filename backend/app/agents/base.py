@@ -10,10 +10,17 @@ class AgentCallError(Exception):
 
 
 class ChatResult:
-    def __init__(self, content: str, prompt_tokens: int, completion_tokens: int):
+    def __init__(
+        self,
+        content: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        cost: float | None = None,
+    ):
         self.content = content
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+        self.cost = cost
 
 
 _client: httpx.AsyncClient | None = None
@@ -64,20 +71,24 @@ async def call_openrouter(
             resp = await client.post("/chat/completions", json=body, headers=headers)
             if resp.status_code == 200:
                 data = resp.json()
-                choice = data["choices"][0]["message"]["content"]
+                choices = data.get("choices") or []
+                choice = choices[0].get("message", {}).get("content") if choices else None
                 if choice:
                     usage = data.get("usage", {})
                     return ChatResult(
                         content=choice,
                         prompt_tokens=usage.get("prompt_tokens", 0),
                         completion_tokens=usage.get("completion_tokens", 0),
+                        cost=usage.get("cost"),
                     )
-                last_error = "model returned empty content"
+                last_error = f"model returned no usable content: {resp.text[:200]}"
             else:
                 last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
         except httpx.TimeoutException:
             last_error = "timeout"
         except httpx.HTTPError as e:
             last_error = f"http error: {e}"
+        except (ValueError, KeyError, IndexError, AttributeError, TypeError) as e:
+            last_error = f"malformed response: {e}"
 
     raise AgentCallError(f"call to model '{model}' failed after retry: {last_error}")
