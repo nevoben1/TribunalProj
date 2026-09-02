@@ -2,7 +2,15 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { getTrial, streamTrial, SpeechEntry, VerdictEntry, Trial } from "@/lib/api";
+import {
+  getTrial,
+  streamTrial,
+  SpeechEntry,
+  VerdictEntry,
+  Trial,
+  FinalVerdict,
+} from "@/lib/api";
+import FinalVerdictBanner from "@/components/FinalVerdictBanner";
 import SpeechCard, { SpeechCardState } from "@/components/SpeechCard";
 import VerdictCard, { VerdictCardState } from "@/components/VerdictCard";
 import UsageTable from "@/components/UsageTable";
@@ -25,6 +33,7 @@ function fromSpeechEntry(entry: SpeechEntry): SpeechCardState {
     content: entry.content,
     model: entry.model,
     usage: entry.usage,
+    errorReason: entry.error_reason,
   };
 }
 
@@ -36,6 +45,7 @@ function fromVerdictEntry(entry: VerdictEntry): VerdictCardState {
     reasoning: entry.reasoning,
     model: entry.model,
     usage: entry.usage,
+    errorReason: entry.error_reason,
   };
 }
 
@@ -48,6 +58,8 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
   const [speeches, setSpeeches] = useState<SpeechCardState[]>(initialSpeeches());
   const [verdicts, setVerdicts] = useState<VerdictCardState[]>(initialVerdicts());
   const [done, setDone] = useState(false);
+  const [systemError, setSystemError] = useState<string | null>(null);
+  const [finalVerdict, setFinalVerdict] = useState<FinalVerdict | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +82,7 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
       if (trial.status === "completed") {
         setSpeeches(trial.speeches.map(fromSpeechEntry));
         setVerdicts(trial.verdicts.map(fromVerdictEntry));
+        setFinalVerdict(trial.final_verdict);
         setDone(true);
         return;
       }
@@ -106,15 +119,66 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
             )
           );
         },
-        onError: (data) => {
+        onRetry: (data) => {
+          const retry = {
+            retry: data.retry,
+            max_retries: data.max_retries,
+            reason: data.reason,
+          };
           setSpeeches((prev) =>
-            prev.map((s) => (s.role === data.role ? { role: data.role, status: "failed" } : s))
+            prev.map((s) =>
+              s.role === data.role ? { ...s, status: "retrying", retry } : s
+            )
           );
           setVerdicts((prev) =>
-            prev.map((v) => (v.role === data.role ? { role: data.role, status: "failed" } : v))
+            prev.map((v) =>
+              v.role === data.role ? { ...v, status: "retrying", retry } : v
+            )
           );
         },
-        onDone: () => setDone(true),
+        onError: (data) => {
+          // role "system" is a trial-level failure (e.g. results not saved),
+          // not one participant's — it belongs in a banner, not a card.
+          if (data.role === "system") {
+            setSystemError(data.message);
+            return;
+          }
+          setSpeeches((prev) =>
+            prev.map((s) =>
+              s.role === data.role
+                ? { role: data.role, status: "failed", errorReason: data.message }
+                : s
+            )
+          );
+          setVerdicts((prev) =>
+            prev.map((v) =>
+              v.role === data.role
+                ? { role: data.role, status: "failed", errorReason: data.message }
+                : v
+            )
+          );
+        },
+        onFinalVerdict: (data) => setFinalVerdict(data),
+        onDone: () => {
+          setDone(true);
+          // The stream is over: anything still waiting never arrived, so
+          // resolve it rather than leaving a card spinning forever.
+          const stranded = "This participant never reported back before the trial closed.";
+          setSpeeches((prev) =>
+            prev.map((s) =>
+              s.status === "pending" || s.status === "retrying"
+                ? { role: s.role, status: "failed", errorReason: stranded }
+                : s
+            )
+          );
+          setVerdicts((prev) =>
+            prev.map((v) =>
+              v.status === "pending" || v.status === "retrying"
+                ? { role: v.role, status: "failed", errorReason: stranded }
+                : v
+            )
+          );
+        },
       });
     }
 
@@ -152,6 +216,7 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
         <Link href="/history">Case History →</Link>
       </div>
       <p className="charge-sheet-display">&ldquo;{chargeSheet}&rdquo;</p>
+      {systemError && <p className="system-banner">{systemError}</p>}
       {modelMode && (
         <p className="muted" style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}>
           Model configuration: {modelMode}
@@ -171,6 +236,8 @@ export default function TrialPage({ params }: { params: Promise<{ id: string }> 
           <VerdictCard key={v.role} {...v} />
         ))}
       </div>
+
+      {finalVerdict && <FinalVerdictBanner final={finalVerdict} />}
 
       {done && (
         <>

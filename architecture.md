@@ -2,7 +2,7 @@
 
 ## Context
 
-Class project (solo, rolling through semester, no rush). A web app simulates a courtroom: user submits a free-text charge sheet, 4 AI lawyer agents (2 prosecutors, 2 defenders, distinct personas) each generate a one-shot speech via OpenRouter, then 3 AI judge agents independently review the charge sheet + all 4 speeches and each render a verdict (Guilty / Not Guilty) with written reasoning. No consensus step — 3 verdicts shown side by side. User watches speeches and verdicts stream in live. Past trials are saved for browsing later. No auth yet, no ground-truth scoring. Deploy later to cloud, build locally first.
+Class project (solo, rolling through semester, no rush). A web app simulates a courtroom: user submits a free-text charge sheet, 4 AI lawyer agents (2 prosecutors, 2 defenders, distinct personas) each generate a one-shot speech via OpenRouter, then 3 AI judge agents independently review the charge sheet + all 4 speeches and each render a verdict (Guilty / Not Guilty) with written reasoning. The 3 verdicts are shown side by side and reduced to a final verdict by a deterministic majority tally (tie goes to the defendant) — no deliberation round and no aggregating model call. User watches speeches and verdicts stream in live. Past trials are saved for browsing later. No auth yet, no ground-truth scoring. Deploy later to cloud, build locally first.
 
 This is a greenfield project — no existing code to trace. Plan below defines project layout and component responsibilities so implementation can proceed piece by piece over the semester.
 
@@ -51,7 +51,7 @@ backend/
 - `agents/base.py` wraps OpenRouter's OpenAI-compatible `/chat/completions` endpoint with async httpx, takes `model`, `system_prompt`, `user_prompt`, returns text. Centralizes retry/timeout/error handling so lawyer/judge modules stay thin.
 - `agents/personas.py` holds one system prompt + model id per of the 7 roles — single place to tune personas and swap models later.
 - SSE endpoint: `POST /trials` accepts `{charge_sheet: str}`, returns `text/event-stream`. Each event is JSON: `{type: "speech"|"verdict"|"done"|"error", role, content, ...}`.
-- Error handling: if one agent call fails (OpenRouter timeout/rate limit), catch it, yield an `error` event for that role with a fallback message, continue the trial rather than aborting entirely — a single flaky free-tier model shouldn't kill the whole run.
+- Error handling: agent failures are classified (transient vs permanent), transient ones retried within a per-participant 3-attempt budget with backoff, and each retry surfaced to the user as a `retry` event. If the budget runs out, yield an `error` event for that role carrying a plain-language reason, and continue the trial rather than aborting entirely — a single flaky free-tier model shouldn't kill the whole run. Mongo calls go through the same retry discipline; the final persist is the protected path, and the stream always ends in `done`. Full contract in [specs.md](specs.md).
 - `GET /trials` (paginated list for history page) and `GET /trials/{id}` (full replay of a past trial, non-streaming) read straight from Mongo.
 
 **Mongo document shape (`trials` collection):**
@@ -67,7 +67,8 @@ backend/
   "verdicts": [
     {"role": "judge_1", "persona": "...", "model": "...", "verdict": "guilty|not_guilty", "reasoning": "..."},
     ...
-  ]
+  ],
+  "final_verdict": {"verdict": "guilty|not_guilty|null", "guilty_votes": 0, "not_guilty_votes": 0, "failed_votes": 0, "tie_break": false, "unanimous": false}
 }
 ```
 No relational joins needed — one document per trial is a natural fit, matches your Mongo Atlas call.
@@ -100,7 +101,7 @@ The expensive call is the judge call: each of the 3 judges receives charge sheet
 - **Cap speech length via `max_tokens`** on lawyer calls (e.g. 250–400 tokens each). Biggest single lever since it shrinks every downstream judge prompt.
 - **Cheap/free models for lawyers, reserve any stronger/pricier model for judges only** — judges do more reasoning per call, so that's the right place to spend if spending at all.
 - **Log token usage per call.** OpenRouter returns `usage` (prompt/completion tokens) on every response — store it per speech/verdict entry on the trial document. Free to capture, gives real cost data instead of guesswork, useful for the class writeup.
-- **Single retry max on failed calls**, no retry loops — a flaky free-tier model retried repeatedly silently multiplies spend.
+- **Bounded 3-attempt budget per participant (2 retries), and only for transient failures** — no retry loops, and a permanent failure (bad model id, auth, 400) fails immediately instead of paying for two more calls. Worst case is 21 model calls per trial, never unbounded.
 - **Skip prompt caching** — not worth the complexity; the charge sheet (bulk of the prompt) changes every trial, and system prompts alone are small, so there's no meaningful static prefix to cache.
 
 Mongo document gets a `usage` field per speech/verdict entry, e.g. `{"prompt_tokens": int, "completion_tokens": int}`, so historical trials carry their own cost trail.

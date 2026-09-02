@@ -1,6 +1,6 @@
 import logging
 
-from app.agents.base import AgentCallError, call_openrouter
+from app.agents.base import AgentCallError, RetryNotifier, call_openrouter
 from app.agents.personas import PersonaConfig
 from app.config import settings
 from app.models.trial import SpeechEntry, Usage
@@ -8,7 +8,12 @@ from app.models.trial import SpeechEntry, Usage
 logger = logging.getLogger("tribunal.lawyer")
 
 
-async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: str) -> SpeechEntry:
+async def run_lawyer_speech(
+    charge_sheet: str,
+    persona: PersonaConfig,
+    model: str,
+    on_retry: RetryNotifier | None = None,
+) -> SpeechEntry:
     user_prompt = (
         f"Charge sheet:\n{charge_sheet}\n\n"
         "Deliver your speech in 120-150 words — this is a hard limit, not a "
@@ -22,6 +27,7 @@ async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: st
             system_prompt=persona.system_prompt,
             user_prompt=user_prompt,
             max_tokens=settings.lawyer_max_tokens,
+            on_retry=on_retry,
         )
         return SpeechEntry(
             role=persona.role,
@@ -29,6 +35,7 @@ async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: st
             model=model,
             status="ok",
             content=result.content,
+            attempts=result.attempts,
             usage=Usage(
                 prompt_tokens=result.prompt_tokens,
                 completion_tokens=result.completion_tokens,
@@ -36,10 +43,16 @@ async def run_lawyer_speech(charge_sheet: str, persona: PersonaConfig, model: st
             ),
         )
     except AgentCallError as e:
-        logger.warning("lawyer %s (%s) call failed: %s", persona.role, model, e.message)
+        logger.warning(
+            "lawyer %s (%s) failed after %d attempt(s): %s",
+            persona.role, model, e.attempts, e.detail,
+        )
         return SpeechEntry(
             role=persona.role,
             persona=persona.system_prompt,
             model=model,
             status="failed",
+            attempts=e.attempts,
+            error_reason=e.message,
+            error_code=e.failure_class,
         )

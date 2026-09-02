@@ -1,7 +1,13 @@
 import json
 import logging
 
-from app.agents.base import AgentCallError, call_openrouter
+from app.agents.base import (
+    AgentCallError,
+    ChatResult,
+    FailureClass,
+    RetryNotifier,
+    call_openrouter,
+)
 from app.agents.personas import PersonaConfig
 from app.models.trial import SpeechEntry, Usage, VerdictEntry
 
@@ -33,6 +39,21 @@ def _parse_verdict(raw: str) -> tuple[str, str] | None:
     return verdict, reasoning
 
 
+def _validate_verdict(result: ChatResult) -> tuple[str, str]:
+    """Content-level validation, run inside the shared attempt budget.
+
+    Raising here makes an unparseable verdict cost exactly one attempt, the
+    same as an HTTP failure — the parse layer never doubles the call count.
+    """
+    parsed = _parse_verdict(result.content)
+    if parsed is None:
+        raise AgentCallError(
+            FailureClass.INVALID_VERDICT,
+            f"unparseable verdict: {result.content[:300]!r}",
+        )
+    return parsed
+
+
 def _build_user_prompt(charge_sheet: str, speeches: list[SpeechEntry]) -> str:
     parts = [f"Charge sheet:\n{charge_sheet}\n"]
     for s in speeches:
@@ -48,55 +69,50 @@ def _build_user_prompt(charge_sheet: str, speeches: list[SpeechEntry]) -> str:
 
 
 async def run_judge_verdict(
-    charge_sheet: str, speeches: list[SpeechEntry], persona: PersonaConfig, model: str
+    charge_sheet: str,
+    speeches: list[SpeechEntry],
+    persona: PersonaConfig,
+    model: str,
+    on_retry: RetryNotifier | None = None,
 ) -> VerdictEntry:
     user_prompt = _build_user_prompt(charge_sheet, speeches)
 
-    # Parse-layer retry (distinct from base.py's HTTP-layer retry): a full
-    # second call is only made if the first response fails to parse as a
-    # valid verdict, never for HTTP/timeout reasons (base.py owns those).
-    for parse_attempt in range(2):
-        try:
-            result = await call_openrouter(
-                model=model,
-                system_prompt=persona.system_prompt,
-                user_prompt=user_prompt,
-                json_mode=True,
-            )
-        except AgentCallError as e:
-            logger.warning("judge %s (%s) call failed: %s", persona.role, model, e.message)
-            return VerdictEntry(
-                role=persona.role,
-                persona=persona.system_prompt,
-                model=model,
-                status="failed",
-            )
-
-        parsed = _parse_verdict(result.content)
-        if parsed is not None:
-            verdict, reasoning = parsed
-            return VerdictEntry(
-                role=persona.role,
-                persona=persona.system_prompt,
-                model=model,
-                status="ok",
-                verdict=verdict,
-                reasoning=reasoning,
-                usage=Usage(
-                    prompt_tokens=result.prompt_tokens,
-                    completion_tokens=result.completion_tokens,
-                    cost=result.cost,
-                ),
-            )
-        logger.warning(
-            "judge %s (%s) parse attempt %d failed, raw content: %r",
-            persona.role, model, parse_attempt, result.content,
+    try:
+        result = await call_openrouter(
+            model=model,
+            system_prompt=persona.system_prompt,
+            user_prompt=user_prompt,
+            json_mode=True,
+            validate=_validate_verdict,
+            on_retry=on_retry,
         )
-        # parse failed, loop retries once more if parse_attempt == 0
+    except AgentCallError as e:
+        logger.warning(
+            "judge %s (%s) failed after %d attempt(s): %s",
+            persona.role, model, e.attempts, e.detail,
+        )
+        return VerdictEntry(
+            role=persona.role,
+            persona=persona.system_prompt,
+            model=model,
+            status="failed",
+            attempts=e.attempts,
+            error_reason=e.message,
+            error_code=e.failure_class,
+        )
 
+    verdict, reasoning = result.parsed
     return VerdictEntry(
         role=persona.role,
         persona=persona.system_prompt,
         model=model,
-        status="failed",
+        status="ok",
+        verdict=verdict,
+        reasoning=reasoning,
+        attempts=result.attempts,
+        usage=Usage(
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            cost=result.cost,
+        ),
     )

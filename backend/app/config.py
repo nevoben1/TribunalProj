@@ -14,6 +14,17 @@ class Settings(BaseSettings):
     lawyer_max_tokens: int = 800
     request_timeout_seconds: float = 30.0
 
+    # Failure handling. The agent budget is per participant and shared between
+    # HTTP failures and judge parse failures, so worst case is
+    # 7 * agent_max_attempts model calls for a whole trial.
+    agent_max_attempts: int = 3
+    retry_base_delay_seconds: float = 1.0
+    retry_max_delay_seconds: float = 8.0
+    mongo_max_attempts: int = 3
+    # Generous enough for a cold host's first Atlas connection (SRV lookup +
+    # TLS + topology discovery), still far below the driver's 30s default.
+    mongo_server_selection_timeout_ms: int = 10000
+
     # Model configuration: both pools are always configured server-side.
     # The user picks which pool to use ("same" or "distinct") per trial,
     # via a request field — no server restart needed to switch.

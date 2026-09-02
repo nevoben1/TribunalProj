@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ApiValidationError, createTrial, ModelMode } from "@/lib/api";
+import { ApiValidationError, createTrial, ModelMode, warmBackend } from "@/lib/api";
 
 const MIN_LEN = 20;
 const MAX_LEN = 4000;
+// Past this, the delay is a cold backend rather than a slow request; say so
+// instead of leaving a frozen button that reads as a broken app.
+const SLOW_SUBMIT_MS = 4000;
 
 export default function ChargeSheetForm() {
   const router = useRouter();
@@ -13,6 +16,17 @@ export default function ChargeSheetForm() {
   const [modelMode, setModelMode] = useState<ModelMode>("same");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Start the backend waking while the charge sheet is still being written —
+  // composing one usually covers most of a cold start.
+  useEffect(() => {
+    warmBackend();
+    return () => {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+    };
+  }, []);
 
   const length = chargeSheet.length;
   const tooShort = length > 0 && length < MIN_LEN;
@@ -24,6 +38,7 @@ export default function ChargeSheetForm() {
     if (!canSubmit) return;
     setSubmitting(true);
     setError(null);
+    slowTimer.current = setTimeout(() => setSlow(true), SLOW_SUBMIT_MS);
     try {
       const { id } = await createTrial(chargeSheet, modelMode);
       router.push(`/trial/${id}`);
@@ -31,9 +46,15 @@ export default function ChargeSheetForm() {
       if (err instanceof ApiValidationError) {
         setError("Charge sheet must be between 20 and 4000 characters.");
       } else {
-        setError("Failed to submit charge sheet. Please try again.");
+        setError(
+          "The courthouse could not be reached. It may still be waking up — " +
+            "please try again in a moment."
+        );
       }
       setSubmitting(false);
+    } finally {
+      if (slowTimer.current) clearTimeout(slowTimer.current);
+      setSlow(false);
     }
   }
 
@@ -78,6 +99,12 @@ export default function ChargeSheetForm() {
       </fieldset>
 
       {error && <p className="error-text">{error}</p>}
+      {slow && (
+        <p className="muted">
+          Waking the courthouse — the free hosting tier can take up to a minute
+          to start. Please stay on this page.
+        </p>
+      )}
 
       <button type="submit" disabled={!canSubmit}>
         {submitting ? "Starting trial…" : "Start Trial"}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { listTrials, TrialSummary } from "@/lib/api";
+import { verdictLabel, voteTally } from "@/components/FinalVerdictBanner";
 
 export default function HistoryPage() {
   const [trials, setTrials] = useState<TrialSummary[] | null>(null);
@@ -37,7 +38,17 @@ export default function HistoryPage() {
                 <span>{new Date(t.created_at).toLocaleString()}</span>
                 <span>{t.status}</span>
                 <span>{t.model_mode}</span>
-                <span>{t.verdict_summary.join(", ")}</span>
+                {t.final_verdict ? (
+                  <span
+                    className={`verdict-chip verdict-${t.final_verdict.verdict ?? "none"}`}
+                  >
+                    {verdictLabel(t.final_verdict.verdict)}
+                    {t.final_verdict.verdict && ` ${voteTally(t.final_verdict)}`}
+                    {t.final_verdict.tie_break && " · tie"}
+                  </span>
+                ) : (
+                  <span>{t.verdict_summary.join(", ")}</span>
+                )}
               </div>
             </Link>
           </li>
