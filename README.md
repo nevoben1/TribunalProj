@@ -104,7 +104,7 @@ All backend settings live in `backend/.env` — see [`.env.example`](backend/.en
 | `SAME_MODEL` | The model used by all seven participants in *same* mode. |
 | `PROSECUTOR_1_MODEL` … `JUDGE_3_MODEL` | Per-participant models used in *distinct* mode. |
 | `AGENT_MAX_ATTEMPTS` | Attempts per participant, shared across call and parse failures. Default 3. |
-| `LAWYER_MAX_TOKENS` | Caps speech length, which is what keeps judge prompts (and cost) down. |
+| `AGENT_MAX_TOKENS` | Output cap for every participant — keeps speeches short (and judge prompts cheap), and keeps a judge's verdict JSON from being truncated by a provider's own default cap. Also accepted under its old name, `LAWYER_MAX_TOKENS`. |
 
 Model ids are never hardcoded — both pools are configured here, and the user picks between them per trial.
 

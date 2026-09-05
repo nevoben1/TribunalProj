@@ -16,7 +16,7 @@ Backend: FastAPI (Python, async httpx), Mongo (motor). Frontend: Next.js, `Event
 - Every retry emits a `retry` SSE event (`role, retry, max_retries, reason`). Every final failure emits `error` with a **plain-language** `message` — never a raw status code, exception, or provider payload; raw detail to logs only.
 - Mongo calls go through the retry helper in `db.py` (3 attempts, transient driver errors only). Final trial persist is the protected path; if it fails, emit `system` error and still emit `done`. `run_trial` never dies silently — stream always terminates with `done`.
 - One failed agent (lawyer or judge) never aborts the trial — emit `error` event for that role, mark `status: "failed"` + `error_reason`/`error_code` in Mongo, continue.
-- Cap lawyer `max_tokens` (~250–400). Log `usage` per call.
+- Cap `max_tokens` on every call via `AGENT_MAX_TOKENS` — judges included, or a provider's own default cap truncates the verdict JSON. Log `usage` per call.
 - No prompt caching, no auth.
 - Final verdict = deterministic majority tally over the judges that ruled (`tally_final_verdict`), **never an extra model call**. Failed judges are excluded, not counted as acquittals; a tie goes to the defendant; zero verdicts = no verdict. Stored on the trial doc, emitted as a `final_verdict` SSE event, recomputed on read for docs written before the field existed.
 - Models: user picks `model_mode` (same/distinct) per trial, no restart needed. same=all 7 use `SAME_MODEL`; distinct=per-participant `*_MODEL` env vars. Never hardcode model ids.

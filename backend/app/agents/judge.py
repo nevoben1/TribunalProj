@@ -9,6 +9,7 @@ from app.agents.base import (
     call_openrouter,
 )
 from app.agents.personas import PersonaConfig
+from app.config import settings
 from app.models.trial import SpeechEntry, Usage, VerdictEntry
 
 logger = logging.getLogger("tribunal.judge")
@@ -82,6 +83,7 @@ async def run_judge_verdict(
             model=model,
             system_prompt=persona.system_prompt,
             user_prompt=user_prompt,
+            max_tokens=settings.agent_max_tokens,
             json_mode=True,
             validate=_validate_verdict,
             on_retry=on_retry,

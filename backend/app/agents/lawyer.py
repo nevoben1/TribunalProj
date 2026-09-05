@@ -26,7 +26,7 @@ async def run_lawyer_speech(
             model=model,
             system_prompt=persona.system_prompt,
             user_prompt=user_prompt,
-            max_tokens=settings.lawyer_max_tokens,
+            max_tokens=settings.agent_max_tokens,
             on_retry=on_retry,
         )
         return SpeechEntry(

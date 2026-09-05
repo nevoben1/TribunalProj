@@ -92,7 +92,7 @@ Computed once in the orchestrator after the judges resolve, persisted with the t
 - Resolved per-call via `settings.model_for_role(role, model_mode)`; trial doc records the `model_mode` used for traceability. Two trials submitted back to back can use different modes.
 
 ### Token & cost controls
-- `max_tokens` cap on lawyer speech calls (~250–400 tokens).
+- `max_tokens` cap on every participant call (`AGENT_MAX_TOKENS`). On lawyers it bounds speech length, and so bounds every downstream judge prompt. On judges it is a correctness control, not just a cost one: with no cap the request inherits the provider's own default `max_completion_tokens`, and a reasoning-capable judge can exhaust it mid-`reasoning`, returning truncated JSON (or a bare `{}`) that fails the strict parse and burns the attempt budget.
 - Cheap/free models for lawyers; stronger model reserved for judges.
 - Log `usage` (prompt/completion tokens) per speech/verdict entry, from OpenRouter response.
 - No retry loops beyond the bounded 3-attempt budget above. The budget is per participant and hard-capped: worst case is 21 model calls for a trial, never unbounded.

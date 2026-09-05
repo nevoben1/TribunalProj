@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,15 @@ class Settings(BaseSettings):
     mongo_uri: str = ""
     mongo_db_name: str = "tribunal"
     cors_origins: str = "http://localhost:3000"
-    lawyer_max_tokens: int = 800
+    # Output cap for every participant. Judges need one as much as lawyers do:
+    # left unset, the request inherits the provider's own default
+    # max_completion_tokens, which on some endpoints is small enough that the
+    # reasoning phase consumes it and the verdict JSON comes back truncated
+    # mid-string (or as a bare "{}") and fails to parse.
+    agent_max_tokens: int = Field(
+        default=800,
+        validation_alias=AliasChoices("AGENT_MAX_TOKENS", "LAWYER_MAX_TOKENS"),
+    )
     request_timeout_seconds: float = 30.0
 
     # Failure handling. The agent budget is per participant and shared between
